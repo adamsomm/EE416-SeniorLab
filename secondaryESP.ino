@@ -41,15 +41,12 @@ RollingAverage<int> rssiAvg(10);
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
     if (advertisedDevice.getAddress().equals(targetDeviceAddress)) {
-      // Print ONLY the RSSI number and a newline
+
       int deviceRSSI = advertisedDevice.getRSSI();
 
       rssiAvg.add_value(deviceRSSI);
 
-      Serial.print("Raw RSSI: ");
-      Serial.print(deviceRSSI);
-      Serial.print(" | Rolling Average: ");
-      Serial.println(rssiAvg.get_average());  
+      Serial.printf("Raw RSSI: %d | Rolling Average: %\n",deviceRSSI, rssiAvg.get_average()); 
     }  
   }
 };

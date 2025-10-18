@@ -12,7 +12,7 @@ template <typename T>
 class RollingAverage {
   private:
     std::queue<T> data_queue;
-    int current_sum = 0;
+    double current_sum = 0.0;
     size_t max_size;
 
   public:

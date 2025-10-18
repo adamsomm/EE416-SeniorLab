@@ -46,7 +46,7 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
       rssiAvg.add_value(deviceRSSI);
 
-      Serial.printf("Raw RSSI: %d | Rolling Average: %\n",deviceRSSI, rssiAvg.get_average()); 
+      Serial.printf("Raw RSSI: %d | Rolling Average: %.2f\n",deviceRSSI, rssiAvg.get_average()); 
     }  
   }
 };

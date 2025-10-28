@@ -29,6 +29,9 @@ class RollingAverage {
       }
       return current_sum / data_queue.size();
     }
+    int get_count(){
+      return data_queue.size();
+    }
 };
 
 #endif // ROLLING_AVERAGE_H

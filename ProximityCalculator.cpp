@@ -2,6 +2,8 @@
 #include <cmath>
 #include <vector>
 #include <iostream>
+#include <limits>    // Required for std::numeric_limits
+#include <algorithm> // Required for std::max and std::min
 
 // --- Constructor ---
 // Initializes all the constant values for the class instance.
@@ -10,22 +12,31 @@ ProximityCalculator::ProximityCalculator() :
     ANCHOR_2_COORDS{8.0, 8.0},
     ROOM_BOUNDS{0, 10, 0, 10},
     RSSI_AT_ONE_METER(-59.0),
-    N_PATH_LOSS_DIVISOR(20.0)
+    N_PATH_LOSS_DIVISOR(2.0) // This corresponds to N=2 in the formula
 {
     // Constructor body is empty as all initialization is done above
 }
 
 // --- Helper Function: RSSI to Distance ---
 double ProximityCalculator::rssiToDistance(double rssi) {
-    return pow(10, (RSSI_AT_ONE_METER - rssi) / N_PATH_LOSS_DIVISOR);
+    // Formula: distance = 10^((RSSI_at_1m - RSSI) / (10 * N))
+    return pow(10, (RSSI_AT_ONE_METER - rssi) / (10 * N_PATH_LOSS_DIVISOR));
+}
+
+// --- Helper Function: Distance to RSSI ---
+double ProximityCalculator::distanceToRssi(double d) {
+    // Formula: RSSI = RSSI_at_1m - 10 * N * log10(distance)
+    return RSSI_AT_ONE_METER - (10 * N_PATH_LOSS_DIVISOR * std::log10(d));
 }
 
 // --- Helper Function: Check if point is in room ---
 bool ProximityCalculator::isPointInRoom(Point point) {
-    return (point.x >= ROOM_BOUNDS.min_x &&
-            point.x <= ROOM_BOUNDS.max_x &&
-            point.y >= ROOM_BOUNDS.min_y &&
-            point.y <= ROOM_BOUNDS.max_y);
+    const double EPSILON = 1e-9;
+    
+    return (point.x >= ROOM_BOUNDS.min_x - EPSILON &&
+            point.x <= ROOM_BOUNDS.max_x + EPSILON &&
+            point.y >= ROOM_BOUNDS.min_y - EPSILON &&
+            point.y <= ROOM_BOUNDS.max_y + EPSILON);
 }
 
 // --- Helper Function: The Error Function ---
@@ -47,78 +58,70 @@ double ProximityCalculator::calculate_error_at_point(Point guess_pos, double r1,
     return (error1 * error1) + (error2 * error2);
 }
 
-
-// --- Static Solver Wrapper ---
-// This C-style function is what NLopt actually calls.
-double ProximityCalculator::nlopt_objective_function(unsigned n, const double* x, double* grad, void* data) {
-    // 'n' is the number of dimensions (2 for us: x, y)
-    // 'x' is the array [x_guess, y_guess] from the solver
-    // 'grad' is for the gradient (we don't use it for this algorithm)
-    // 'data' is our custom void* pointer
-
-    // 1. Re-cast the void* data back to our struct
-    OptimizationData* opt_data = static_cast<OptimizationData*>(data);
-
-    // 2. Create a Point from the solver's guess
-    Point guess_pos = {x[0], x[1]};
-
-    // 3. Use the 'self' pointer to call the non-static member function
-    return opt_data->self->calculate_error_at_point(guess_pos, opt_data->r1, opt_data->r2);
-}
-
-
-// --- Main Public Function ---
+// --- Main Public Function (Grid Search Solver) ---
 bool ProximityCalculator::isInRoom(double rssi1, double rssi2) {
-    
-    // 1. Convert RSSI to (noisy) distance estimates
+
+    // Convert RSSI to (noisy) distance estimates
     double r1 = rssiToDistance(rssi1);
     double r2 = rssiToDistance(rssi2);
 
-    // 2. Prepare the data packet for the solver
-    OptimizationData data;
-    data.self = this; // Pass a pointer to this class instance
-    data.r1 = r1;
-    data.r2 = r2;
+    // --- Grid Search Parameters ---
+    const double COARSE_STEP = 0.5; // Coarse step: check every 0.5 meters
+    const double FINE_STEP = 0.05;  // Fine step: check every 0.05 meters (5 cm)
+    const double FINE_RANGE = 1.0;  // Search +/- 1.0m around the best coarse point
+    
+    // We will search *outside* the room to find the true best-fit point.
+    const double SEARCH_MARGIN = 5.0; // Search 5m beyond the room boundaries
+    
+    // Initial best result is max possible error (a very large number)
+    double min_error = std::numeric_limits<double>::max();
+    Point best_fit_position = {4.0, 5.0};  
 
-    // 3. Initialize the NLopt solver
-    // (n=2 means we are solving for 2 variables, x and y)
-    // LN_BOBYQA is a good, standard algorithm that doesn't need gradients
-    nlopt::opt solver(nlopt::LN_BOBYQA, 2);
+    // Define wider search bounds ***
+    const double search_min_x = ROOM_BOUNDS.min_x - SEARCH_MARGIN;
+    const double search_max_x = ROOM_BOUNDS.max_x + SEARCH_MARGIN;
+    const double search_min_y = ROOM_BOUNDS.min_y - SEARCH_MARGIN;
+    const double search_max_y = ROOM_BOUNDS.max_y + SEARCH_MARGIN;
+    
+    // STEP 1: COARSE GRID SEARCH
+    Point coarse_best_point = best_fit_position;
 
-    // 4. Set the "objective function" (our error function)
-    solver.set_min_objective(ProximityCalculator::nlopt_objective_function, &data);
-
-    // 5. Set the search boundaries (constrain search to the room)
-    /*std::vector<double> lower_bounds = {ROOM_BOUNDS.min_x, ROOM_BOUNDS.min_y};
-    std::vector<double> upper_bounds = {ROOM_BOUNDS.max_x, ROOM_BOUNDS.max_y};
-    solver.set_lower_bounds(lower_bounds);
-    solver.set_upper_bounds(upper_bounds);*/
-
-    // 6. Set a stop condition (e.g., a timeout or tolerance)
-    solver.set_xtol_rel(1e-4); // Stop when results change by < 0.01%
-
-    // 7. Set the initial guess (a 2D vector [x, y])
-    // The center of the room is a safe bet.
-    std::vector<double> guess = {
-        (ROOM_BOUNDS.min_x + ROOM_BOUNDS.max_x) / 2.0,
-        (ROOM_BOUNDS.min_y + ROOM_BOUNDS.max_y) / 2.0
-    };
-
-    double min_error_found; // This will be filled by the solver
-
-    // 8. RUN THE SOLVER!
-    try {
-        nlopt::result result = solver.optimize(guess, min_error_found);
-
-        // 'guess' vector is now overwritten with the best-fit solution
-        Point best_fit_position = {guess[0], guess[1]};
-        
-        // 9. Check if this single point is in the room
-        return isPointInRoom(best_fit_position);
-
-    } catch (const std::exception& e) {
-        // The solver failed for some reason
-        std::cerr << "Solver failed: " << e.what() << std::endl;
-        return false;
+    // Use wider search bounds 
+    for (double x = search_min_x; x <= search_max_x; x += COARSE_STEP) {
+        for (double y = search_min_y; y <= search_max_y; y += COARSE_STEP) {
+            
+            Point current_point = {x, y};
+            double current_error = calculate_error_at_point(current_point, r1, r2);
+            
+            if (current_error < min_error) {
+                min_error = current_error;
+                coarse_best_point = current_point;
+            }
+        }
     }
+
+    // STEP 2: FINE GRID SEARCH (Local Refinement)
+    // Define the local search bounds based on the coarse result
+    double fine_min_x = std::max(search_min_x, coarse_best_point.x - FINE_RANGE);
+    double fine_max_x = std::min(search_max_x, coarse_best_point.x + FINE_RANGE);
+    double fine_min_y = std::max(search_min_y, coarse_best_point.y - FINE_RANGE);
+    double fine_max_y = std::min(search_max_y, coarse_best_point.y + FINE_RANGE);
+    
+    min_error = std::numeric_limits<double>::max();
+    
+    for (double x = fine_min_x; x <= fine_max_x; x += FINE_STEP) {
+        for (double y = fine_min_y; y <= fine_max_y; y += FINE_STEP) {
+            
+            Point current_point = {x, y};
+            double current_error = calculate_error_at_point(current_point, r1, r2);
+            
+            if (current_error < min_error) {
+                min_error = current_error;
+                best_fit_position = current_point;
+            }
+        }
+    }
+    
+    return isPointInRoom(best_fit_position);
 }
+

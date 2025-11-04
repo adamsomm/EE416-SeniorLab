@@ -9,7 +9,7 @@
 // Initializes all the constant values for the class instance.
 ProximityCalculator::ProximityCalculator() :
     ANCHOR_1_COORDS{0.0, 5.0},
-    ANCHOR_2_COORDS{8.0, 8.0},
+    ANCHOR_2_COORDS{10.0, 5.0},
     ROOM_BOUNDS{0, 10, 0, 10},
     RSSI_AT_ONE_METER(-59.0),
     N_PATH_LOSS_DIVISOR(2.0) // This corresponds to N=2 in the formula

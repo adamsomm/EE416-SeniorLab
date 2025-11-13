@@ -15,7 +15,8 @@ int scanTime = 1;
 
 // MMU MAC Addresses 
 BLEAddress targetDevices[] = {
-  BLEAddress("54:dc:e9:1d:34:ff")
+  BLEAddress("54:dc:e9:1d:34:ff"),
+  BLEAddress("8C:6F:B9:A7:DE:4E")
 };
 
 int numTargetDevices = sizeof(targetDevices) / sizeof(targetDevices[0]);
@@ -23,7 +24,8 @@ int numTargetDevices = sizeof(targetDevices) / sizeof(targetDevices[0]);
 std::map<std::string, RollingAverage<int>> deviceRssiMap;
 
 // Gateway MAC Address
-uint8_t broadcastAddress[] = {0xD0, 0xCF, 0x13, 0x19, 0x93, 0x38};
+// uint8_t broadcastAddress[] = {0xD0, 0xCF, 0x13, 0x19, 0x93, 0x38};
+uint8_t broadcastAddress[] = {0xCC, 0xDB, 0xA7, 0x97, 0xB8, 0x20};
 
 // Structure to hold data for a single device.
 typedef struct struct_device_data {
@@ -50,13 +52,15 @@ void OnDataSent(const wifi_tx_info_t *mac_addr, esp_now_send_status_t status) {
 
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) {
-    std::string mac_str = advertisedDevice.getAddress().toString();
+    std::string mac_str = advertisedDevice.getAddress().toString().c_str();
 
     // Check if the found device is one we are tracking 
     // .find() returns .end() if it does not find it 
-    if(deviceRssiMap.find(mac_str) != deviceRssiMap.end()) { 
-      int deviceRSSI = advertizedDevice.getRSSI();
-      deviceRssiMap[mac_str].add_value(deviceRSSI);
+    auto it = deviceRssiMap.find(mac_str);
+  
+    if(it != deviceRssiMap.end()) { 
+      int deviceRSSI = advertisedDevice.getRSSI();
+      it->second.add_value(deviceRSSI);
     }
   }
 };
@@ -83,8 +87,8 @@ void setup() {
   // Populate map with target devices.
   Serial.println("Tracking devices: ");
   for (int i = 0; i < numTargetDevices; i++) {
-    std::string mac_str = targetDevices[i].toString();
-    deviceRssiMap[mac_str] = RollingAverage<int>(10);
+    std::string mac_str = targetDevices[i].toString().c_str();
+    deviceRssiMap.emplace(mac_str, 10);
     Serial.printf(" - %s\n", mac_str.c_str());
   }
 
@@ -111,9 +115,9 @@ void loop() {
   const int min_readings_to_send = 5;
 
   for(const auto& pair : deviceRssiMap) {
-    if (pair.second.get_count >= min_readings_to_send) {
+    if (pair.second.get_count() >= min_readings_to_send) {
       if (myData.device_count >= MAX_DEVICES) {
-        Serial.println("Packet full, sending partial list.")
+        Serial.println("Packet full, sending partial list.");
         break;
       }
       // Copy MAC Address

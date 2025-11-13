@@ -35,4 +35,3 @@ class RollingAverage {
 };
 
 #endif // ROLLING_AVERAGE_H
-

@@ -6,9 +6,11 @@
 #include <map>
 #include <string>
 #include <BLEAdvertisedDevice.h>
+#include <esp_wifi.h>
 #include "RollingAverage.h"
 
 #define MAX_DEVICES 5
+#define WIFI_CHANNEL 6
 
 BLEScan* pBLEScan;
 int scanTime = 1;
@@ -24,8 +26,8 @@ int numTargetDevices = sizeof(targetDevices) / sizeof(targetDevices[0]);
 std::map<std::string, RollingAverage<int>> deviceRssiMap;
 
 // Gateway MAC Address
-// uint8_t broadcastAddress[] = {0xD0, 0xCF, 0x13, 0x19, 0x93, 0x38};
-uint8_t broadcastAddress[] = {0xCC, 0xDB, 0xA7, 0x97, 0xB8, 0x20};
+uint8_t broadcastAddress[] = {0xD0, 0xCF, 0x13, 0x19, 0x93, 0x38};
+// uint8_t broadcastAddress[] = {0xCC, 0xDB, 0xA7, 0x97, 0xB8, 0x20};
 
 // Structure to hold data for a single device.
 typedef struct struct_device_data {
@@ -71,13 +73,17 @@ void setup() {
 
   // wifi Setup
   WiFi.mode(WIFI_STA);
+  if (esp_wifi_set_channel(WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE) != ESP_OK) {
+    Serial.println("Error setting WiFi channel");
+  }
+
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
   esp_now_register_send_cb(OnDataSent);
   memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;
+  peerInfo.channel = WIFI_CHANNEL;
   peerInfo.encrypt = false;
   if (esp_now_add_peer(&peerInfo) != ESP_OK){
     Serial.println("Failed to add peer");

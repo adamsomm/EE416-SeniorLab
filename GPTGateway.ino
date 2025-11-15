@@ -79,7 +79,8 @@ void sendAttendanceUpdate(const std::string &tag_id, bool is_present) {
     }
   }
 
-  StaticJsonDocument<128> doc;
+  JsonDocument doc;
+  doc.clear();
   doc["tag_id"] = tag_id;
   doc["is_present"] = is_present;
   String jsonPayload;
@@ -107,7 +108,7 @@ void sendAttendanceUpdate(const std::string &tag_id, bool is_present) {
 class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
   void onResult(BLEAdvertisedDevice advertisedDevice) override {
     // Only update RSSI if the device is one of the tracked target devices
-    std::string macStr = advertisedDevice.getAddress().toString();
+    std::string macStr = advertisedDevice.getAddress().toString().c_str();
     int rssi = advertisedDevice.getRSSI();
 
     auto it = deviceRssiMap.find(macStr);
@@ -177,7 +178,7 @@ void setup() {
 
   Serial.println("Tracking devices:");
   for (int i = 0; i < numTargetDevices; i++) {
-    std::string macStr = targetDevices[i].toString();
+    std::string macStr = targetDevices[i].toString().c_str();
     deviceRssiMap.emplace(macStr, RollingAverage<int>(RSSI_ROLLING_SIZE));
     lastSentStatus[macStr] = false;        // default absent
     lastSentMillis[macStr] = 0;

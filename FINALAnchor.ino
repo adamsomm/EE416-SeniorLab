@@ -10,7 +10,7 @@
 #include "RollingAverage.h"
 
 #define MAX_DEVICES 5
-#define WIFI_CHANNEL 6
+#define WIFI_CHANNEL 1
 
 BLEScan* pBLEScan;
 int scanTime = 1;
@@ -18,7 +18,9 @@ int scanTime = 1;
 // MMU MAC Addresses 
 BLEAddress targetDevices[] = {
   BLEAddress("54:dc:e9:1d:34:ff"),
-  BLEAddress("8C:6F:B9:A7:DE:4E")
+  BLEAddress("8c:6f:b9:a7:dE:4e"),
+  BLEAddress("8c:6f:b9:a7:de:7f")
+ 
 };
 
 int numTargetDevices = sizeof(targetDevices) / sizeof(targetDevices[0]);

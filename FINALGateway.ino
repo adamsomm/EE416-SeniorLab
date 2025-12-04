@@ -22,7 +22,7 @@
 #define SEND_THROTTLE_MS 5000       // min time between POSTs for same tag
 const char* ssid = "ClarksonGuest";
 const char* password = "";
-const char* serverAddress = "http://10.131.206.180:5000/receive_data";
+const char* serverAddress = "http://10.128.41.115:5000/receive_data";
 
 // ----------------- TYPES -----------------
 struct EsponQueueItem {
@@ -30,7 +30,7 @@ struct EsponQueueItem {
   float anchorRssi;
 };
 
-// ESP-NOW incoming message format
+// ESP-NOW incoming message format 
 struct struct_device_data {
   char mac_addr[18];
   float average_rssi;
@@ -47,11 +47,12 @@ int scanTime = BLE_SCAN_SECONDS;
 
 BLEAddress targetDevices[] = {
     BLEAddress("54:dc:e9:1d:34:ff"),
-    BLEAddress("8C:6F:B9:A7:DE:4E")
+    BLEAddress("8c:6f:b9:a7:de:4e"),
+    BLEAddress("8c:6f:b9:a7:de:7f")
 };
 int numTargetDevices = sizeof(targetDevices) / sizeof(targetDevices[0]);
 
-// rolling RSSI per device seen by gateway (from BLE)
+// rolling RSSI per device seen by *this* gateway (from BLE)
 std::map<std::string, RollingAverage<int>> deviceRssiMap;
 
 // map for last sent status and last time sent (debounce)
@@ -125,6 +126,7 @@ void OnDataRecv(const esp_now_recv_info* info, const uint8_t* incomingData, int 
   // Called in ISR context: must be fast and safe.
   struct_message myData;
   if (len != sizeof(myData)) {
+    // if sizes mismatch we still try to memcpy but warn (do NOT do allocations)
     memcpy(&myData, incomingData, min(len, (int)sizeof(myData)));
   } else {
     memcpy(&myData, incomingData, sizeof(myData));
@@ -150,9 +152,11 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
-  // Wi-Fi initial mode (STA)
+  // Wi-Fi initial mode (STA) - do not block on connect here
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
+  Serial.println(WiFi.channel());
+
 
   Serial.print("WiFi connecting...");
   unsigned long start = millis();
@@ -171,7 +175,7 @@ void setup() {
   BLEDevice::init("");
   pBLEScan = BLEDevice::getScan();
   pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  pBLEScan->setActiveScan(false); // passive = less radio contention. set true if need active scan.
+  pBLEScan->setActiveScan(false); // passive = less radio contention. set true if you need active scan.
   pBLEScan->setInterval(200);     // ms
   pBLEScan->setWindow(30);        // ms (smaller window reduces BLE duty)
 
@@ -193,6 +197,7 @@ void setup() {
   // Initialize ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
+    // do not return; we might still want to attempt to recover later
   } else {
     esp_now_register_recv_cb(OnDataRecv);
     Serial.println("ESP-NOW initialized and recv callback registered.");
@@ -204,11 +209,11 @@ void setup() {
 
 // ----------------- MAIN LOOP: BLE scan + process queue + send HTTP safely -----------------
 void loop() {
-  // 1) Start a short BLE scan
+  // 1) Start a short BLE scan (blocking but short)
   pBLEScan->start(scanTime, false);
   pBLEScan->clearResults(); // free memory
 
-  // 2) Process any pending ESP-NOW items 
+  // 2) Process any pending ESP-NOW items (do not block long here)
   EsponQueueItem item;
   // Dequeue up to some number per loop iteration to avoid hogging CPU:
   int processed = 0;
@@ -233,7 +238,7 @@ void loop() {
     Serial.println("--------------------");
     Serial.print("Device: "); Serial.println(macStr.c_str());
     Serial.print("Anchor RSSI: "); Serial.print(anchorRssi);
-    Serial.print(" | Gateway RSSI (avg): "); Serial.println(gatewayAvgRssi);
+    Serial.print(" | Gateway RSSI: "); Serial.println(gatewayAvgRssi);
     Serial.print("Presence: "); Serial.println(isHere ? "PRESENT" : "ABSENT");
 
     // Debounce and rate-limit logic
@@ -249,6 +254,7 @@ void loop() {
         // state changed -> send immediately
         needSend = true;
       } else if (now - prevMillis > SEND_THROTTLE_MS) {
+        // no change but it's been long enough, optionally refresh
         needSend = false; // keep false by default to avoid spamming; set true if you want periodic refresh
       }
     }

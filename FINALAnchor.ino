@@ -11,10 +11,10 @@
 
 #define MAX_DEVICES 5
 #define WIFI_CHANNEL 1
+#define RSSI_ROLLING_SIZE 10
 
 BLEScan* pBLEScan;
 int scanTime = 1;
-final int rollingAvgSize = 10;
 
 // MMU MAC Addresses 
 BLEAddress targetDevices[] = {
@@ -97,7 +97,7 @@ void setup() {
   Serial.println("Tracking devices: ");
   for (int i = 0; i < numTargetDevices; i++) {
     std::string mac_str = targetDevices[i].toString().c_str();
-    deviceRssiMap.emplace(mac_str, rollingAvgSize);
+    deviceRssiMap.emplace(mac_str, RSSI_ROLLING_SIZE);
     Serial.printf(" - %s\n", mac_str.c_str());
   }
 

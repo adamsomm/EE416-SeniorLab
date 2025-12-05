@@ -14,6 +14,7 @@
 
 BLEScan* pBLEScan;
 int scanTime = 1;
+final int rollingAvgSize = 10;
 
 // MMU MAC Addresses 
 BLEAddress targetDevices[] = {
@@ -96,7 +97,7 @@ void setup() {
   Serial.println("Tracking devices: ");
   for (int i = 0; i < numTargetDevices; i++) {
     std::string mac_str = targetDevices[i].toString().c_str();
-    deviceRssiMap.emplace(mac_str, 10);
+    deviceRssiMap.emplace(mac_str, rollingAvgSize);
     Serial.printf(" - %s\n", mac_str.c_str());
   }
 
